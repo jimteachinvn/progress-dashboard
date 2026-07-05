@@ -41,8 +41,10 @@ create table if not exists student_ratings (
   id uuid primary key default gen_random_uuid(),
   student_id uuid references students(id),
   rating_date date not null default current_date,
-  pronunciation_rating text check (pronunciation_rating in ('needs_work','developing','strong')),
-  confidence_rating text check (confidence_rating in ('needs_work','developing','strong')),
+  pronunciation_rating int check (pronunciation_rating between 1 and 5),
+  confidence_rating int check (confidence_rating between 1 and 5),
+  participation_rating int check (participation_rating between 1 and 5),
+  homework_rating int check (homework_rating between 1 and 5),
   notes text,
   created_at timestamptz default now()
 );

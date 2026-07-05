@@ -1,6 +1,8 @@
 import os
 from datetime import date
 
+import altair as alt
+import pandas as pd
 import streamlit as st
 from dotenv import load_dotenv
 from supabase import Client, create_client
@@ -21,7 +23,13 @@ SUPABASE_URL = get_setting("SUPABASE_URL")
 SUPABASE_KEY = get_setting("SUPABASE_KEY")
 
 STATUS_FILLED = {"not_started": 0, "in_progress": 2, "mastered": 3}
-RATING_FILLED = {"needs_work": 1, "developing": 2, "strong": 3}
+
+RATING_CRITERIA = [
+    ("pronunciation_rating", "Pronunciation", "#273f73"),
+    ("confidence_rating", "Confidence", "#6d83b3"),
+    ("participation_rating", "Participation", "#e8b923"),
+    ("homework_rating", "Homework quality", "#8a94a6"),
+]
 
 
 def _stars_plain(filled: int, total: int = 3) -> str:
@@ -29,15 +37,14 @@ def _stars_plain(filled: int, total: int = 3) -> str:
 
 
 def _stars_html(filled: int, total: int = 3) -> str:
+    filled = filled or 0
     filled_part = f'<span class="star-filled">{"★" * filled}</span>' if filled else ""
     empty_part = f'<span class="star-empty">{"☆" * (total - filled)}</span>' if total - filled else ""
     return f'<span class="star-rating">{filled_part}{empty_part}</span>'
 
 
 STATUS_STARS = {k: _stars_plain(v) for k, v in STATUS_FILLED.items()}
-RATING_STARS = {k: _stars_plain(v) for k, v in RATING_FILLED.items()}
 STATUS_STARS_HTML = {k: _stars_html(v) for k, v in STATUS_FILLED.items()}
-RATING_STARS_HTML = {k: _stars_html(v) for k, v in RATING_FILLED.items()}
 
 st.set_page_config(page_title="ESL Progress Dashboard", page_icon="📘", layout="wide")
 
@@ -133,11 +140,67 @@ def render_parent_portal(token: str):
         subtitle = f"{subtitle} · {student['class_level']}"
     render_hero(f"{student['name']}'s Progress", subtitle)
 
+    ratings = data.get("ratings") or []
+
+    st.subheader("Latest snapshot")
+    if not ratings:
+        st.write("No ratings recorded yet.")
+    else:
+        latest = ratings[-1]
+        st.caption(f"As of {latest['rating_date']}")
+        cols = st.columns(len(RATING_CRITERIA))
+        for col, (field, label, _color) in zip(cols, RATING_CRITERIA):
+            value = latest.get(field)
+            stars = _stars_html(value, total=5) if value else "—"
+            with col:
+                st.markdown(f"**{label}**<br>{stars}", unsafe_allow_html=True)
+
+    if len(ratings) >= 2:
+        st.subheader("Progress over time")
+        df = pd.DataFrame(ratings)
+        df["rating_date"] = pd.to_datetime(df["rating_date"])
+        value_cols = [field for field, _, _ in RATING_CRITERIA]
+        label_map = {field: label for field, label, _ in RATING_CRITERIA}
+        color_map = {label: color for _, label, color in RATING_CRITERIA}
+
+        long_df = df.melt(id_vars="rating_date", value_vars=value_cols, var_name="criterion", value_name="stars")
+        long_df["criterion"] = long_df["criterion"].map(label_map)
+        long_df = long_df.dropna(subset=["stars"])
+
+        chart = (
+            alt.Chart(long_df)
+            .mark_line(point=True)
+            .encode(
+                x=alt.X("rating_date:T", title="Date"),
+                y=alt.Y("stars:Q", title="Stars", scale=alt.Scale(domain=[1, 5])),
+                color=alt.Color(
+                    "criterion:N",
+                    title="Criterion",
+                    scale=alt.Scale(domain=list(color_map.keys()), range=list(color_map.values())),
+                ),
+                tooltip=["rating_date:T", "criterion:N", "stars:Q"],
+            )
+            .properties(height=320)
+        )
+        st.altair_chart(chart, use_container_width=True)
+
+    if ratings:
+        with st.expander("Full ratings history"):
+            for r in reversed(ratings):
+                parts = [f"{label}: {_stars_html(r.get(field), total=5)}" for field, label, _ in RATING_CRITERIA if r.get(field)]
+                st.markdown(f"**{r['rating_date']}** — " + "&nbsp;&nbsp;&nbsp;".join(parts), unsafe_allow_html=True)
+                if r.get("notes"):
+                    st.caption(r["notes"])
+
+    st.divider()
     st.subheader("Learning objectives")
     objectives = data.get("objectives") or []
     if not objectives:
         st.write("No objectives have been added yet.")
     else:
+        mastered_count = sum(1 for o in objectives if o["status"] == "mastered")
+        st.progress(mastered_count / len(objectives), text=f"{mastered_count} of {len(objectives)} objectives mastered")
+
         by_category = {}
         for o in objectives:
             by_category.setdefault(o.get("category") or "General", []).append(o)
@@ -148,22 +211,6 @@ def render_parent_portal(token: str):
                 st.markdown(f"{o['title']} — {stars}", unsafe_allow_html=True)
                 if o.get("description"):
                     st.caption(o["description"])
-
-    st.divider()
-    st.subheader("Speaking ratings")
-    ratings = data.get("ratings") or []
-    if not ratings:
-        st.write("No ratings recorded yet.")
-    else:
-        for r in ratings:
-            pron = RATING_STARS_HTML.get(r["pronunciation_rating"], "—")
-            conf = RATING_STARS_HTML.get(r["confidence_rating"], "—")
-            st.markdown(
-                f"**{r['rating_date']}** — Pronunciation: {pron}&nbsp;&nbsp;&nbsp;Confidence: {conf}",
-                unsafe_allow_html=True,
-            )
-            if r.get("notes"):
-                st.caption(r["notes"])
 
     st.divider()
     st.subheader("Milestones")
@@ -381,28 +428,27 @@ def render_track_progress(client: Client):
                 ).execute()
                 st.success("Saved.")
 
-    st.markdown("#### Add a speaking rating")
+    st.markdown("#### Add a progress check-in")
     with st.form("rating_form", clear_on_submit=True):
-        col1, col2, col3 = st.columns(3)
-        rating_date = col1.date_input("Date", value=date.today())
-        pronunciation = col2.radio(
-            "Pronunciation", list(RATING_STARS.keys()), format_func=lambda s: RATING_STARS[s], horizontal=True
-        )
-        confidence = col3.radio(
-            "Confidence", list(RATING_STARS.keys()), format_func=lambda s: RATING_STARS[s], horizontal=True
-        )
+        rating_date = st.date_input("Date", value=date.today())
+        rating_values = {}
+        cols = st.columns(len(RATING_CRITERIA))
+        for col, (field, label, _color) in zip(cols, RATING_CRITERIA):
+            with col:
+                st.write(label)
+                choice = st.feedback("stars", key=f"rating_{field}")
+                rating_values[field] = (choice + 1) if choice is not None else None
         notes = st.text_area("Notes", key="rating_notes")
-        if st.form_submit_button("Add rating"):
+        if st.form_submit_button("Add check-in"):
             client.table("student_ratings").insert(
                 {
                     "student_id": student["id"],
                     "rating_date": rating_date.isoformat(),
-                    "pronunciation_rating": pronunciation,
-                    "confidence_rating": confidence,
                     "notes": notes or None,
+                    **rating_values,
                 }
             ).execute()
-            st.success("Rating added.")
+            st.success("Check-in added.")
 
     st.markdown("#### Add a milestone")
     with st.form("milestone_form", clear_on_submit=True):

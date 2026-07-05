@@ -61,8 +61,9 @@ with conn.cursor() as cur:
         (student_id, objective_id),
     )
     cur.execute(
-        "insert into student_ratings (student_id, pronunciation_rating, confidence_rating) "
-        "values (%s, 'developing', 'strong')",
+        "insert into student_ratings "
+        "(student_id, pronunciation_rating, confidence_rating, participation_rating, homework_rating) "
+        "values (%s, 3, 5, 4, 2)",
         (student_id,),
     )
     cur.execute(
@@ -77,7 +78,13 @@ try:
     if data:
         check("student name matches", data["student"]["name"] == "RLS Test Student")
         check("objective + status present", len(data["objectives"]) == 1 and data["objectives"][0]["status"] == "in_progress")
-        check("rating present", len(data["ratings"]) == 1 and data["ratings"][0]["pronunciation_rating"] == "developing")
+        check(
+            "rating present",
+            len(data["ratings"]) == 1
+            and data["ratings"][0]["pronunciation_rating"] == 3
+            and data["ratings"][0]["participation_rating"] == 4
+            and data["ratings"][0]["homework_rating"] == 2,
+        )
         check("milestone present", len(data["milestones"]) == 1 and data["milestones"][0]["title"] == "Finished unit 1")
 
     # anon still cannot see this row directly even though it has a real token

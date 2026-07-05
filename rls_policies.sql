@@ -114,8 +114,10 @@ begin
         'rating_date', r.rating_date,
         'pronunciation_rating', r.pronunciation_rating,
         'confidence_rating', r.confidence_rating,
+        'participation_rating', r.participation_rating,
+        'homework_rating', r.homework_rating,
         'notes', r.notes
-      ) order by r.rating_date desc), '[]'::json)
+      ) order by r.rating_date asc), '[]'::json)
       from student_ratings r
       where r.student_id = v_student_id
     ),
