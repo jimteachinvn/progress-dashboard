@@ -20,18 +20,93 @@ def get_setting(key: str) -> str:
 SUPABASE_URL = get_setting("SUPABASE_URL")
 SUPABASE_KEY = get_setting("SUPABASE_KEY")
 
-STATUS_STARS = {
-    "not_started": "☆ ☆ ☆",
-    "in_progress": "★ ★ ☆",
-    "mastered": "★ ★ ★",
-}
-RATING_STARS = {
-    "needs_work": "★ ☆ ☆",
-    "developing": "★ ★ ☆",
-    "strong": "★ ★ ★",
-}
+STATUS_FILLED = {"not_started": 0, "in_progress": 2, "mastered": 3}
+RATING_FILLED = {"needs_work": 1, "developing": 2, "strong": 3}
+
+
+def _stars_plain(filled: int, total: int = 3) -> str:
+    return ("★ " * filled + "☆ " * (total - filled)).strip()
+
+
+def _stars_html(filled: int, total: int = 3) -> str:
+    filled_part = f'<span class="star-filled">{"★" * filled}</span>' if filled else ""
+    empty_part = f'<span class="star-empty">{"☆" * (total - filled)}</span>' if total - filled else ""
+    return f'<span class="star-rating">{filled_part}{empty_part}</span>'
+
+
+STATUS_STARS = {k: _stars_plain(v) for k, v in STATUS_FILLED.items()}
+RATING_STARS = {k: _stars_plain(v) for k, v in RATING_FILLED.items()}
+STATUS_STARS_HTML = {k: _stars_html(v) for k, v in STATUS_FILLED.items()}
+RATING_STARS_HTML = {k: _stars_html(v) for k, v in RATING_FILLED.items()}
 
 st.set_page_config(page_title="ESL Progress Dashboard", page_icon="📘", layout="wide")
+
+CUSTOM_CSS = """
+<style>
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.main .block-container {
+  animation: fadeInUp 0.35s ease-out;
+  max-width: 1100px;
+}
+
+.esl-hero {
+  background: linear-gradient(135deg, #273f73 0%, #32508f 100%);
+  color: #ffffff;
+  padding: 1.5rem 1.75rem;
+  border-radius: 14px;
+  margin-bottom: 1.5rem;
+  box-shadow: 0 6px 20px rgba(39, 63, 115, 0.18);
+}
+.esl-hero h1 {
+  color: #ffffff;
+  margin: 0;
+  font-size: 1.9rem;
+}
+.esl-hero p {
+  color: #ffde59;
+  margin: 0.25rem 0 0 0;
+  font-size: 1rem;
+}
+
+div.stButton > button, div[data-testid="stFormSubmitButton"] > button {
+  background: #273f73;
+  color: #ffffff;
+  border: 1px solid #273f73;
+  border-radius: 8px;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+div.stButton > button:hover, div[data-testid="stFormSubmitButton"] > button:hover {
+  background: #32508f;
+  color: #ffde59;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(39, 63, 115, 0.3);
+}
+
+.star-rating { letter-spacing: 2px; font-size: 1.05rem; }
+.star-filled { color: #ffde59; text-shadow: 0 0 1px rgba(39, 63, 115, 0.4); }
+.star-empty { color: #c9ced9; }
+
+div[data-testid="stExpander"] {
+  border-radius: 10px;
+  border: 1px solid #e3e7f1;
+}
+
+@media (max-width: 640px) {
+  .main .block-container { padding-left: 1rem; padding-right: 1rem; }
+  .esl-hero { padding: 1.1rem 1.25rem; }
+  .esl-hero h1 { font-size: 1.5rem; }
+}
+</style>
+"""
+st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
+
+
+def render_hero(title: str, subtitle: str = None):
+    subtitle_html = f"<p>{subtitle}</p>" if subtitle else ""
+    st.markdown(f'<div class="esl-hero"><h1>{title}</h1>{subtitle_html}</div>', unsafe_allow_html=True)
 
 
 @st.cache_resource
@@ -53,11 +128,11 @@ def render_parent_portal(token: str):
         return
 
     student = data["student"]
-    st.title(f"{student['name']}'s Progress")
-    if student.get("class_name"):
-        st.caption(f"{student['class_name']}" + (f" · {student['class_level']}" if student.get("class_level") else ""))
+    subtitle = student.get("class_name")
+    if subtitle and student.get("class_level"):
+        subtitle = f"{subtitle} · {student['class_level']}"
+    render_hero(f"{student['name']}'s Progress", subtitle)
 
-    st.divider()
     st.subheader("Learning objectives")
     objectives = data.get("objectives") or []
     if not objectives:
@@ -69,8 +144,8 @@ def render_parent_portal(token: str):
         for category, items in by_category.items():
             st.markdown(f"**{category}**")
             for o in items:
-                stars = STATUS_STARS.get(o["status"], STATUS_STARS["not_started"])
-                st.write(f"{o['title']} — {stars}")
+                stars = STATUS_STARS_HTML.get(o["status"], STATUS_STARS_HTML["not_started"])
+                st.markdown(f"{o['title']} — {stars}", unsafe_allow_html=True)
                 if o.get("description"):
                     st.caption(o["description"])
 
@@ -81,9 +156,12 @@ def render_parent_portal(token: str):
         st.write("No ratings recorded yet.")
     else:
         for r in ratings:
-            pron = RATING_STARS.get(r["pronunciation_rating"], "—")
-            conf = RATING_STARS.get(r["confidence_rating"], "—")
-            st.write(f"**{r['rating_date']}** — Pronunciation: {pron}   Confidence: {conf}")
+            pron = RATING_STARS_HTML.get(r["pronunciation_rating"], "—")
+            conf = RATING_STARS_HTML.get(r["confidence_rating"], "—")
+            st.markdown(
+                f"**{r['rating_date']}** — Pronunciation: {pron}&nbsp;&nbsp;&nbsp;Confidence: {conf}",
+                unsafe_allow_html=True,
+            )
             if r.get("notes"):
                 st.caption(r["notes"])
 
@@ -102,7 +180,7 @@ def render_parent_portal(token: str):
 # ---------------------------------------------------------------------------
 
 def render_login():
-    st.title("Teacher login")
+    render_hero("Teacher login")
     with st.form("login_form"):
         email = st.text_input("Email")
         password = st.text_input("Password", type="password")
@@ -210,15 +288,41 @@ def render_objectives(client: Client):
         .execute()
         .data
     )
-    if objectives:
-        st.table(
-            [
-                {"Order": o.get("order_index"), "Category": o.get("category") or "—", "Title": o["title"]}
-                for o in objectives
-            ]
-        )
-    else:
+    if not objectives:
         st.write("No objectives for this class yet.")
+        return
+
+    for o in objectives:
+        with st.expander(f"{o.get('order_index', 0)}. {o.get('category') or '—'} — {o['title']}"):
+            with st.form(f"edit_objective_{o['id']}"):
+                col1, col2 = st.columns(2)
+                new_category = col1.text_input("Category", value=o.get("category") or "", key=f"cat_{o['id']}")
+                new_title = col2.text_input("Objective title", value=o["title"], key=f"title_{o['id']}")
+                new_description = st.text_area(
+                    "Description (optional)", value=o.get("description") or "", key=f"desc_{o['id']}"
+                )
+                new_order = st.number_input(
+                    "Order", min_value=0, step=1, value=o.get("order_index") or 0, key=f"order_{o['id']}"
+                )
+                save_col, delete_col = st.columns(2)
+                save = save_col.form_submit_button("Save changes")
+                delete = delete_col.form_submit_button("Delete objective", type="secondary")
+
+            if save and new_title:
+                client.table("objectives").update(
+                    {
+                        "category": new_category or None,
+                        "title": new_title,
+                        "description": new_description or None,
+                        "order_index": int(new_order),
+                    }
+                ).eq("id", o["id"]).execute()
+                st.rerun()
+
+            if delete:
+                client.table("student_objective_status").delete().eq("objective_id", o["id"]).execute()
+                client.table("objectives").delete().eq("id", o["id"]).execute()
+                st.rerun()
 
 
 def render_track_progress(client: Client):
@@ -324,7 +428,7 @@ def render_teacher_app():
         st.divider()
         page = st.radio("Section", ["Classes", "Students", "Objectives", "Track progress"])
 
-    st.title("ESL Progress Dashboard")
+    render_hero("ESL Progress Dashboard")
 
     if page == "Classes":
         render_classes(client)
