@@ -7,8 +7,18 @@ from supabase import Client, create_client
 
 load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 
-SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+
+def get_setting(key: str) -> str:
+    try:
+        if key in st.secrets:
+            return st.secrets[key]
+    except st.errors.StreamlitSecretNotFoundError:
+        pass
+    return os.environ.get(key)
+
+
+SUPABASE_URL = get_setting("SUPABASE_URL")
+SUPABASE_KEY = get_setting("SUPABASE_KEY")
 
 STATUS_STARS = {
     "not_started": "☆ ☆ ☆",
