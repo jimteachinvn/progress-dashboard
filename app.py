@@ -1,5 +1,5 @@
 import os
-from datetime import date
+from datetime import date, datetime
 
 import altair as alt
 import pandas as pd
@@ -30,6 +30,40 @@ RATING_CRITERIA = [
     ("participation_rating", "Participation", "#e8b923"),
     ("homework_rating", "Homework quality", "#8a94a6"),
 ]
+
+# Vietnamese labels for the same criteria, used only in the parent-facing portal.
+VI_CRITERION_LABELS = {
+    "pronunciation_rating": "Phát âm",
+    "confidence_rating": "Sự tự tin",
+    "participation_rating": "Tham gia phát biểu",
+    "homework_rating": "Chất lượng bài tập",
+}
+
+VI_TEXT = {
+    "hero_subtitle_sep": " · ",
+    "latest_snapshot": "Đánh giá gần nhất",
+    "as_of": "Tính đến ngày {date}",
+    "no_ratings": "Chưa có đánh giá nào.",
+    "progress_over_time": "Tiến độ theo thời gian",
+    "chart_date": "Ngày",
+    "chart_stars": "Số sao",
+    "chart_criterion": "Tiêu chí",
+    "full_history": "Xem toàn bộ lịch sử đánh giá",
+    "learning_objectives": "Mục tiêu học tập",
+    "no_objectives": "Chưa có mục tiêu nào.",
+    "objectives_mastered": "{mastered}/{total} mục tiêu đã hoàn thành",
+    "general_category": "Chung",
+    "milestones": "Cột mốc đạt được",
+    "no_milestones": "Chưa có cột mốc nào.",
+    "invalid_link": "Đường liên kết không hợp lệ. Vui lòng kiểm tra lại đường liên kết mà giáo viên đã gửi cho bạn.",
+}
+
+
+def format_date_vi(date_str: str) -> str:
+    try:
+        return datetime.strptime(date_str, "%Y-%m-%d").strftime("%d/%m/%Y")
+    except (ValueError, TypeError):
+        return date_str
 
 
 def _stars_plain(filled: int, total: int = 3) -> str:
@@ -131,51 +165,50 @@ def render_parent_portal(token: str):
     data = res.data
 
     if not data:
-        st.error("This link isn't valid. Please double-check the link your teacher sent you.")
+        st.error(VI_TEXT["invalid_link"])
         return
 
     student = data["student"]
     subtitle = student.get("class_name")
     if subtitle and student.get("class_level"):
-        subtitle = f"{subtitle} · {student['class_level']}"
-    render_hero(f"{student['name']}'s Progress", subtitle)
+        subtitle = f"{subtitle}{VI_TEXT['hero_subtitle_sep']}{student['class_level']}"
+    render_hero(f"Tiến độ học tập của {student['name']}", subtitle)
 
     ratings = data.get("ratings") or []
 
-    st.subheader("Latest snapshot")
+    st.subheader(VI_TEXT["latest_snapshot"])
     if not ratings:
-        st.write("No ratings recorded yet.")
+        st.write(VI_TEXT["no_ratings"])
     else:
         latest = ratings[-1]
-        st.caption(f"As of {latest['rating_date']}")
+        st.caption(VI_TEXT["as_of"].format(date=format_date_vi(latest["rating_date"])))
         cols = st.columns(len(RATING_CRITERIA))
-        for col, (field, label, _color) in zip(cols, RATING_CRITERIA):
+        for col, (field, _label, _color) in zip(cols, RATING_CRITERIA):
             value = latest.get(field)
             stars = _stars_html(value, total=5) if value else "—"
             with col:
-                st.markdown(f"**{label}**<br>{stars}", unsafe_allow_html=True)
+                st.markdown(f"**{VI_CRITERION_LABELS[field]}**<br>{stars}", unsafe_allow_html=True)
 
     if len(ratings) >= 2:
-        st.subheader("Progress over time")
+        st.subheader(VI_TEXT["progress_over_time"])
         df = pd.DataFrame(ratings)
         df["rating_date"] = pd.to_datetime(df["rating_date"])
         value_cols = [field for field, _, _ in RATING_CRITERIA]
-        label_map = {field: label for field, label, _ in RATING_CRITERIA}
-        color_map = {label: color for _, label, color in RATING_CRITERIA}
+        color_map = {VI_CRITERION_LABELS[field]: color for field, _, color in RATING_CRITERIA}
 
         long_df = df.melt(id_vars="rating_date", value_vars=value_cols, var_name="criterion", value_name="stars")
-        long_df["criterion"] = long_df["criterion"].map(label_map)
+        long_df["criterion"] = long_df["criterion"].map(VI_CRITERION_LABELS)
         long_df = long_df.dropna(subset=["stars"])
 
         chart = (
             alt.Chart(long_df)
             .mark_line(point=True)
             .encode(
-                x=alt.X("rating_date:T", title="Date"),
-                y=alt.Y("stars:Q", title="Stars", scale=alt.Scale(domain=[1, 5])),
+                x=alt.X("rating_date:T", title=VI_TEXT["chart_date"]),
+                y=alt.Y("stars:Q", title=VI_TEXT["chart_stars"], scale=alt.Scale(domain=[1, 5])),
                 color=alt.Color(
                     "criterion:N",
-                    title="Criterion",
+                    title=VI_TEXT["chart_criterion"],
                     scale=alt.Scale(domain=list(color_map.keys()), range=list(color_map.values())),
                 ),
                 tooltip=["rating_date:T", "criterion:N", "stars:Q"],
@@ -185,25 +218,35 @@ def render_parent_portal(token: str):
         st.altair_chart(chart, use_container_width=True)
 
     if ratings:
-        with st.expander("Full ratings history"):
+        with st.expander(VI_TEXT["full_history"]):
             for r in reversed(ratings):
-                parts = [f"{label}: {_stars_html(r.get(field), total=5)}" for field, label, _ in RATING_CRITERIA if r.get(field)]
-                st.markdown(f"**{r['rating_date']}** — " + "&nbsp;&nbsp;&nbsp;".join(parts), unsafe_allow_html=True)
+                parts = [
+                    f"{VI_CRITERION_LABELS[field]}: {_stars_html(r.get(field), total=5)}"
+                    for field, _, _ in RATING_CRITERIA
+                    if r.get(field)
+                ]
+                st.markdown(
+                    f"**{format_date_vi(r['rating_date'])}** — " + "&nbsp;&nbsp;&nbsp;".join(parts),
+                    unsafe_allow_html=True,
+                )
                 if r.get("notes"):
                     st.caption(r["notes"])
 
     st.divider()
-    st.subheader("Learning objectives")
+    st.subheader(VI_TEXT["learning_objectives"])
     objectives = data.get("objectives") or []
     if not objectives:
-        st.write("No objectives have been added yet.")
+        st.write(VI_TEXT["no_objectives"])
     else:
         mastered_count = sum(1 for o in objectives if o["status"] == "mastered")
-        st.progress(mastered_count / len(objectives), text=f"{mastered_count} of {len(objectives)} objectives mastered")
+        st.progress(
+            mastered_count / len(objectives),
+            text=VI_TEXT["objectives_mastered"].format(mastered=mastered_count, total=len(objectives)),
+        )
 
         by_category = {}
         for o in objectives:
-            by_category.setdefault(o.get("category") or "General", []).append(o)
+            by_category.setdefault(o.get("category") or VI_TEXT["general_category"], []).append(o)
         for category, items in by_category.items():
             st.markdown(f"**{category}**")
             for o in items:
@@ -213,13 +256,13 @@ def render_parent_portal(token: str):
                     st.caption(o["description"])
 
     st.divider()
-    st.subheader("Milestones")
+    st.subheader(VI_TEXT["milestones"])
     milestones = data.get("milestones") or []
     if not milestones:
-        st.write("No milestones recorded yet.")
+        st.write(VI_TEXT["no_milestones"])
     else:
         for m in milestones:
-            st.write(f"🏆 **{m['achieved_at']}** — {m['title']}")
+            st.write(f"🏆 **{format_date_vi(m['achieved_at'])}** — {m['title']}")
 
 
 # ---------------------------------------------------------------------------
