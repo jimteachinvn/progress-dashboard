@@ -425,6 +425,49 @@ def render_students(client: Client):
             st.write("Parent link:")
             st.code(link)
 
+            with st.form(f"edit_student_{s['id']}"):
+                col1, col2, col3 = st.columns(3)
+                current_class_name = s["classes"]["name"] if s.get("classes") else list(class_options.keys())[0]
+                new_class_name = col1.selectbox(
+                    "Class",
+                    list(class_options.keys()),
+                    index=list(class_options.keys()).index(current_class_name)
+                    if current_class_name in class_options
+                    else 0,
+                    key=f"class_{s['id']}",
+                )
+                new_name = col2.text_input("Student name", value=s["name"], key=f"name_{s['id']}")
+                new_parent_contact = col3.text_input(
+                    "Parent contact (email/phone)", value=s.get("parent_contact") or "", key=f"contact_{s['id']}"
+                )
+                confirm_delete = st.checkbox(
+                    "Yes, permanently delete this student and all their ratings/milestones/progress",
+                    key=f"confirm_delete_{s['id']}",
+                )
+                save_col, delete_col = st.columns(2)
+                save = save_col.form_submit_button("Save changes")
+                delete = delete_col.form_submit_button("Delete student", type="secondary")
+
+            if save and new_name:
+                client.table("students").update(
+                    {
+                        "class_id": class_options[new_class_name],
+                        "name": new_name,
+                        "parent_contact": new_parent_contact or None,
+                    }
+                ).eq("id", s["id"]).execute()
+                st.rerun()
+
+            if delete and not confirm_delete:
+                st.warning("Check the confirmation box above before deleting.")
+
+            if delete and confirm_delete:
+                client.table("milestones").delete().eq("student_id", s["id"]).execute()
+                client.table("student_ratings").delete().eq("student_id", s["id"]).execute()
+                client.table("student_objective_status").delete().eq("student_id", s["id"]).execute()
+                client.table("students").delete().eq("id", s["id"]).execute()
+                st.rerun()
+
 
 def render_objectives(client: Client):
     st.subheader("Objectives")
