@@ -63,15 +63,15 @@ VI_TEXT = {
     "as_of": "Ngày {date}",
     "no_ratings": "Chưa có đánh giá nào.",
     "chart_date": "Ngày",
-    "objectives_and_milestones": "Mục tiêu học tập & Cột mốc đạt được",
-    "learning_objectives": "Mục tiêu học tập",
-    "no_objectives": "Chưa có mục tiêu nào.",
-    "objectives_mastered": "{mastered}/{total} mục tiêu đã hoàn thành",
-    "general_category": "Chung",
+    "quest_log": "Nhật Ký Thử Thách",
+    "no_objectives": "Chưa có nhiệm vụ nào.",
+    "quests_completed": "{completed}/{total} nhiệm vụ hoàn thành",
     "milestones": "Cột mốc đạt được",
     "no_milestones": "Chưa có cột mốc nào.",
     "invalid_link": "Đường liên kết không hợp lệ. Vui lòng kiểm tra lại đường liên kết mà giáo viên đã gửi cho bạn.",
     "not_enough_data": "Cần thêm dữ liệu đánh giá để hiển thị biểu đồ này.",
+    "streak_active": "🔥 Chuỗi chuyên cần: {n} tuần liên tiếp!",
+    "streak_inactive": "🔥 Chưa có chuỗi chuyên cần — hãy bắt đầu với bài tập tiếp theo!",
 }
 
 
@@ -94,7 +94,6 @@ def _stars_html(filled: int, total: int = 3) -> str:
 
 
 STATUS_STARS = {k: _stars_plain(v) for k, v in STATUS_FILLED.items()}
-STATUS_STARS_HTML = {k: _stars_html(v) for k, v in STATUS_FILLED.items()}
 
 st.set_page_config(page_title="ESL Progress Dashboard", page_icon="📘", layout="wide")
 
@@ -158,6 +157,41 @@ div[data-testid="stVerticalBlockBorderWrapper"] {
 div[data-testid="stVerticalBlockBorderWrapper"] h4 {
   color: #273f73;
   margin-top: 0;
+}
+
+.quest-active {
+  padding: 0.3rem 0;
+  color: #1F2937;
+}
+.quest-completed {
+  padding: 0.3rem 0;
+  color: #b8860b;
+}
+.quest-completed .quest-title {
+  text-decoration: line-through;
+  opacity: 0.75;
+  text-shadow: 0 0 6px rgba(255, 222, 89, 0.5);
+}
+
+.streak-badge {
+  display: inline-block;
+  padding: 0.4rem 1.1rem;
+  border-radius: 999px;
+  font-weight: 600;
+  margin-bottom: 1.25rem;
+}
+.streak-badge.active {
+  background: linear-gradient(135deg, #ffde59, #ffb020);
+  color: #273f73;
+  animation: pulseGlow 2s ease-in-out infinite;
+}
+.streak-badge.inactive {
+  background: #eef1f8;
+  color: #8a94a6;
+}
+@keyframes pulseGlow {
+  0%, 100% { box-shadow: 0 2px 10px rgba(255, 176, 32, 0.35); }
+  50% { box-shadow: 0 2px 18px rgba(255, 176, 32, 0.65); }
 }
 
 @media (max-width: 640px) {
@@ -255,6 +289,34 @@ def build_trend_chart(ratings: list) -> alt.Chart:
     return (area + points).properties(height=280)
 
 
+def compute_streak(ratings: list) -> tuple:
+    """Consecutive-calendar-weeks streak based on Homework Quality >= 4 stars.
+
+    Computed fresh from history every time rather than stored as a mutable
+    counter, so it can never drift if a teacher edits or backfills a rating.
+    """
+    qualifying_weeks = set()
+    for r in ratings:
+        homework = r.get("homework_rating")
+        if homework is not None and homework >= 4:
+            d = datetime.strptime(r["rating_date"], "%Y-%m-%d").date()
+            iso_year, iso_week, _ = d.isocalendar()
+            qualifying_weeks.add((iso_year, iso_week))
+
+    if not qualifying_weeks:
+        return 0, 0
+
+    week_mondays = sorted(date.fromisocalendar(y, w, 1) for y, w in qualifying_weeks)
+
+    longest = current = 1
+    for i in range(1, len(week_mondays)):
+        gap_weeks = (week_mondays[i] - week_mondays[i - 1]).days // 7
+        current = current + 1 if gap_weeks == 1 else 1
+        longest = max(longest, current)
+
+    return current, longest
+
+
 # ---------------------------------------------------------------------------
 # Parent portal (no login, read-only, reached via ?token=...)
 # ---------------------------------------------------------------------------
@@ -278,6 +340,15 @@ def render_parent_portal(token: str):
     objectives = data.get("objectives") or []
     milestones = data.get("milestones") or []
     ratings_df = pd.DataFrame(ratings) if ratings else pd.DataFrame()
+
+    current_streak, _longest_streak = compute_streak(ratings)
+    if current_streak > 0:
+        st.markdown(
+            f'<div class="streak-badge active">{VI_TEXT["streak_active"].format(n=current_streak)}</div>',
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown(f'<div class="streak-badge inactive">{VI_TEXT["streak_inactive"]}</div>', unsafe_allow_html=True)
 
     # Row 1: skill balance radar + learning trend
     col1, col2 = st.columns(2)
@@ -327,27 +398,34 @@ def render_parent_portal(token: str):
 
     with col4:
         with st.container(border=True):
-            st.markdown(f"#### 🎯 {VI_TEXT['objectives_and_milestones']}")
+            st.markdown(f"#### ⚔️ {VI_TEXT['quest_log']}")
 
-            st.markdown(f"**{VI_TEXT['learning_objectives']}**")
             if not objectives:
                 st.write(VI_TEXT["no_objectives"])
             else:
-                mastered_count = sum(1 for o in objectives if o["status"] == "mastered")
+                completed_count = sum(1 for o in objectives if o["status"] == "mastered")
                 st.progress(
-                    mastered_count / len(objectives),
-                    text=VI_TEXT["objectives_mastered"].format(mastered=mastered_count, total=len(objectives)),
+                    completed_count / len(objectives),
+                    text=VI_TEXT["quests_completed"].format(completed=completed_count, total=len(objectives)),
                 )
                 for o in objectives:
-                    stars = STATUS_STARS_HTML.get(o["status"], STATUS_STARS_HTML["not_started"])
-                    st.markdown(f"- {o['title']} — {stars}", unsafe_allow_html=True)
+                    if o["status"] == "mastered":
+                        st.markdown(
+                            f'<div class="quest-completed">🏆 <span class="quest-title">{o["title"]}</span></div>',
+                            unsafe_allow_html=True,
+                        )
+                    else:
+                        tag = " <em>(đang thực hiện)</em>" if o["status"] == "in_progress" else ""
+                        st.markdown(
+                            f'<div class="quest-active">🛡️ {o["title"]}{tag}</div>', unsafe_allow_html=True
+                        )
 
             st.markdown(f"**{VI_TEXT['milestones']}**")
             if not milestones:
                 st.write(VI_TEXT["no_milestones"])
             else:
                 for m in milestones:
-                    st.write(f"🏆 {format_date_vi(m['achieved_at'])} — {m['title']}")
+                    st.write(f"🏅 {format_date_vi(m['achieved_at'])} — {m['title']}")
 
 
 # ---------------------------------------------------------------------------
