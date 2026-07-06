@@ -45,6 +45,11 @@ create table if not exists student_ratings (
   confidence_rating int check (confidence_rating between 1 and 5),
   participation_rating int check (participation_rating between 1 and 5),
   homework_rating int check (homework_rating between 1 and 5),
+  listening_rating int check (listening_rating between 1 and 5),
+  reading_rating int check (reading_rating between 1 and 5),
+  writing_rating int check (writing_rating between 1 and 5),
+  grammar_rating int check (grammar_rating between 1 and 5),
+  vocabulary_rating int check (vocabulary_rating between 1 and 5),
   notes text,
   created_at timestamptz default now()
 );

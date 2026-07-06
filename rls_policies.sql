@@ -116,6 +116,11 @@ begin
         'confidence_rating', r.confidence_rating,
         'participation_rating', r.participation_rating,
         'homework_rating', r.homework_rating,
+        'listening_rating', r.listening_rating,
+        'reading_rating', r.reading_rating,
+        'writing_rating', r.writing_rating,
+        'grammar_rating', r.grammar_rating,
+        'vocabulary_rating', r.vocabulary_rating,
         'notes', r.notes
       ) order by r.rating_date asc), '[]'::json)
       from student_ratings r

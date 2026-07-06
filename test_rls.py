@@ -62,8 +62,9 @@ with conn.cursor() as cur:
     )
     cur.execute(
         "insert into student_ratings "
-        "(student_id, pronunciation_rating, confidence_rating, participation_rating, homework_rating) "
-        "values (%s, 3, 5, 4, 2)",
+        "(student_id, pronunciation_rating, confidence_rating, participation_rating, homework_rating, "
+        "listening_rating, reading_rating, writing_rating, grammar_rating, vocabulary_rating) "
+        "values (%s, 3, 5, 4, 2, 4, 3, 2, 3, 4)",
         (student_id,),
     )
     cur.execute(
@@ -83,7 +84,12 @@ try:
             len(data["ratings"]) == 1
             and data["ratings"][0]["pronunciation_rating"] == 3
             and data["ratings"][0]["participation_rating"] == 4
-            and data["ratings"][0]["homework_rating"] == 2,
+            and data["ratings"][0]["homework_rating"] == 2
+            and data["ratings"][0]["listening_rating"] == 4
+            and data["ratings"][0]["reading_rating"] == 3
+            and data["ratings"][0]["writing_rating"] == 2
+            and data["ratings"][0]["grammar_rating"] == 3
+            and data["ratings"][0]["vocabulary_rating"] == 4,
         )
         check("milestone present", len(data["milestones"]) == 1 and data["milestones"][0]["title"] == "Finished unit 1")
 
