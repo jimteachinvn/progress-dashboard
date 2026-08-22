@@ -93,15 +93,45 @@ begin
       left join classes c on c.id = s.class_id
       where s.id = v_student_id
     ),
+    -- NOTE: two apps read this function -- progress-dashboard (the six
+    -- communication criteria) and fable-dashboard (the original nine). It
+    -- therefore returns BOTH sets plus 'objectives', so neither breaks.
+    -- Do not trim this payload without checking both consumers.
+    'objectives', (
+      select coalesce(json_agg(json_build_object(
+        'id', o.id,
+        'category', o.category,
+        'title', o.title,
+        'description', o.description,
+        'status', coalesce(sos.status, 'not_started'),
+        'notes', sos.notes,
+        'updated_at', sos.updated_at
+      ) order by o.order_index), '[]'::json)
+      from objectives o
+      left join student_objective_status sos
+        on sos.objective_id = o.id and sos.student_id = v_student_id
+      where o.class_id = (select class_id from students where id = v_student_id)
+    ),
     'ratings', (
       select coalesce(json_agg(json_build_object(
         'rating_date', r.rating_date,
+        -- six communication criteria (progress-dashboard)
         'fluency_rating', r.fluency_rating,
         'clarity_volume_rating', r.clarity_volume_rating,
         'confidence_willingness_rating', r.confidence_willingness_rating,
         'interactive_engagement_rating', r.interactive_engagement_rating,
         'vocabulary_application_rating', r.vocabulary_application_rating,
         'sentence_construction_rating', r.sentence_construction_rating,
+        -- original nine (fable-dashboard)
+        'pronunciation_rating', r.pronunciation_rating,
+        'confidence_rating', r.confidence_rating,
+        'participation_rating', r.participation_rating,
+        'listening_rating', r.listening_rating,
+        'reading_rating', r.reading_rating,
+        'writing_rating', r.writing_rating,
+        'grammar_rating', r.grammar_rating,
+        'vocabulary_rating', r.vocabulary_rating,
+        -- shared
         'homework_rating', r.homework_rating,
         'notes', r.notes
       ) order by r.rating_date asc), '[]'::json)

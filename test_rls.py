@@ -81,7 +81,26 @@ try:
             and r.get("homework_rating") == 5,
         )
         check("teacher notes returned to parent", r.get("notes") == "Ghi chú thử nghiệm")
-        check("retired criteria no longer exposed", "writing_rating" not in r and "listening_rating" not in r)
+        # The payload deliberately carries the original nine criteria too:
+        # fable-dashboard shares this database and reads them. Removing them
+        # blanks out that app's radar chart.
+        check(
+            "legacy criteria still exposed for fable-dashboard",
+            all(
+                k in r
+                for k in (
+                    "pronunciation_rating",
+                    "confidence_rating",
+                    "participation_rating",
+                    "listening_rating",
+                    "reading_rating",
+                    "writing_rating",
+                    "grammar_rating",
+                    "vocabulary_rating",
+                )
+            ),
+        )
+        check("objectives still returned for fable-dashboard", "objectives" in data)
         check("milestone present", len(data["milestones"]) == 1 and data["milestones"][0]["title"] == "Finished unit 1")
 
     # anon still cannot see this row directly even though it has a real token

@@ -65,12 +65,18 @@ with conn.cursor() as cur:
         all_ok = False
         print("FAIL get_student_portal(text) is missing")
 
-    cur.execute("select to_regclass('public.student_ratings_one_per_day')")
-    if cur.fetchone()[0] is not None:
-        print("OK   one-check-in-per-student-per-day index in place")
-    else:
-        all_ok = False
-        print("FAIL student_ratings_one_per_day index is missing")
+    # fable-dashboard shares this database, so duplicate check-ins are still
+    # possible. Report them rather than constraining them away.
+    cur.execute(
+        "select count(*) from (select student_id, rating_date from student_ratings "
+        "group by 1, 2 having count(*) > 1) d"
+    )
+    dupes = cur.fetchone()[0]
+    print(
+        "OK   no duplicate check-ins"
+        if dupes == 0
+        else f"WARN {dupes} student/date pair(s) have more than one check-in"
+    )
 
 conn.close()
 

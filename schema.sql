@@ -55,10 +55,9 @@ create table if not exists student_ratings (
   created_at timestamptz default now()
 );
 
--- One check-in per student per day; the app edits in place rather than
--- inserting a second row.
-create unique index if not exists student_ratings_one_per_day
-  on student_ratings (student_id, rating_date);
+-- No unique index on (student_id, rating_date): fable-dashboard shares this
+-- database and inserts without conflict handling. See
+-- migrate_communication_criteria.sql for the details.
 
 create table if not exists milestones (
   id uuid primary key default gen_random_uuid(),

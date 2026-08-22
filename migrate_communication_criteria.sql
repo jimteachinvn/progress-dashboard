@@ -50,9 +50,13 @@ with ranked as (
 delete from student_ratings
 where id in (select id from ranked where rn > 1);
 
--- 4. Prevent it happening again ----------------------------------------------
--- One check-in per student per day. The new editor updates in place rather
--- than inserting, so this constraint costs nothing in normal use.
-
-create unique index if not exists student_ratings_one_per_day
-  on student_ratings (student_id, rating_date);
+-- 4. Duplicate prevention -- DELIBERATELY NOT ENABLED -------------------------
+-- A unique index on (student_id, rating_date) would prevent a repeat of the
+-- July triple-import. It is left out because a second app shares this
+-- database -- fable-dashboard -- whose "Save class check-in" grid does a plain
+-- insert with no conflict handling, so the constraint turns a repeated save
+-- into an unhandled exception mid-loop.
+--
+-- Enable this ONLY once fable-dashboard upserts instead of inserting:
+--   create unique index student_ratings_one_per_day
+--     on student_ratings (student_id, rating_date);
