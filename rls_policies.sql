@@ -87,7 +87,10 @@ begin
         'id', s.id,
         'name', s.name,
         'class_name', c.name,
-        'class_level', c.level
+        'class_level', c.level,
+        -- fable-dashboard renders this as the hero headshot; dropping it
+        -- silently removes photos for every student who has one.
+        'photo_b64', s.photo_b64
       )
       from students s
       left join classes c on c.id = s.class_id
