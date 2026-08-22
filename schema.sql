@@ -41,18 +41,24 @@ create table if not exists student_ratings (
   id uuid primary key default gen_random_uuid(),
   student_id uuid references students(id),
   rating_date date not null default current_date,
-  pronunciation_rating int check (pronunciation_rating between 1 and 5),
-  confidence_rating int check (confidence_rating between 1 and 5),
-  participation_rating int check (participation_rating between 1 and 5),
+  -- The six in-class communication criteria.
+  fluency_rating int check (fluency_rating between 1 and 5),
+  clarity_volume_rating int check (clarity_volume_rating between 1 and 5),
+  confidence_willingness_rating int check (confidence_willingness_rating between 1 and 5),
+  interactive_engagement_rating int check (interactive_engagement_rating between 1 and 5),
+  vocabulary_application_rating int check (vocabulary_application_rating between 1 and 5),
+  sentence_construction_rating int check (sentence_construction_rating between 1 and 5),
+  -- Graded and shown to parents, but kept outside the six: it measures work
+  -- done at home, not in-class communication.
   homework_rating int check (homework_rating between 1 and 5),
-  listening_rating int check (listening_rating between 1 and 5),
-  reading_rating int check (reading_rating between 1 and 5),
-  writing_rating int check (writing_rating between 1 and 5),
-  grammar_rating int check (grammar_rating between 1 and 5),
-  vocabulary_rating int check (vocabulary_rating between 1 and 5),
   notes text,
   created_at timestamptz default now()
 );
+
+-- One check-in per student per day; the app edits in place rather than
+-- inserting a second row.
+create unique index if not exists student_ratings_one_per_day
+  on student_ratings (student_id, rating_date);
 
 create table if not exists milestones (
   id uuid primary key default gen_random_uuid(),

@@ -3,3 +3,7 @@ __pycache__/
 *.pyc
 .env
 .DS_Store
+
+# Database backups contain real student names and teacher commentary about
+# minors. Never commit these.
+backups/
