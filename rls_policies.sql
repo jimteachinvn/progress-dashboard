@@ -66,6 +66,9 @@ revoke all on classes, students, objectives, student_objective_status,
 -- was passed in as an argument -- never anything else.
 -- ============================================================
 
+-- CANONICAL COPY LIVES IN fable-dashboard/rls_policies.sql. This copy is kept
+-- identical so that re-running either repo's script never strips a key the
+-- other app needs. Edit there, then sync here.
 create or replace function public.get_student_portal(p_access_token text)
 returns json
 language plpgsql
@@ -151,6 +154,32 @@ begin
       ) order by m.achieved_at desc), '[]'::json)
       from milestones m
       where m.student_id = v_student_id
+    ),
+    -- Speaking tests (see migrate_tests.sql), oldest first.
+    'tests', (
+      select coalesce(json_agg(json_build_object(
+        'title', t.title,
+        'test_date', t.test_date,
+        'communication', tr.communication,
+        'fluency', tr.fluency,
+        'extension', tr.extension,
+        'vocabulary', tr.vocabulary,
+        'grammar', tr.grammar,
+        'pronunciation', tr.pronunciation,
+        'interaction', tr.interaction,
+        'multi_sentence', tr.multi_sentence,
+        'used_because', tr.used_because,
+        'gave_example', tr.gave_example,
+        'handled_followup', tr.handled_followup,
+        'asked_questions', tr.asked_questions,
+        'question_words', tr.question_words,
+        'recovery_phrase', tr.recovery_phrase,
+        'stayed_in_english', tr.stayed_in_english,
+        'comments', tr.comments
+      ) order by t.test_date asc, t.created_at asc), '[]'::json)
+      from test_results tr
+      join tests t on t.id = tr.test_id
+      where tr.student_id = v_student_id
     )
   ) into v_result;
 
