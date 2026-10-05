@@ -2,8 +2,8 @@
 -- Row Level Security for the ESL progress dashboard
 --
 -- Model:
---   - "authenticated" = you, the teacher, logged in via Supabase
---     Auth email/password. Full read/write on everything.
+--   - "authenticated" = teacher accounts via Supabase Auth: admins
+--     write, viewers read (see the policy block below).
 --   - "anon" = the publishable key used by both your not-yet-built
 --     teacher login page (pre-auth) and the parent portal pages.
 --     Anon gets NO direct table access at all. The only way anon
@@ -20,32 +20,35 @@ alter table student_objective_status enable row level security;
 alter table student_ratings enable row level security;
 alter table milestones enable row level security;
 
--- Teacher (any logged-in user) gets full CRUD on every table.
--- This is a single-teacher app, so there's no need to scope by user id.
+-- Authenticated users split into two roles (see fable-dashboard's
+-- migrate_viewer_role.sql, which owns this model):
+--   - admins (rows in admin_users, checked via is_admin()): full CRUD
+--   - viewers (any other Supabase Auth account): read-only
+--
+-- This file previously created a blanket "teacher full access" policy for
+-- every authenticated user. Because permissive policies are OR'd, re-running
+-- it silently gave viewers write access again. It now mirrors the viewer
+-- model instead, and drops the blanket policy if present.
 
-drop policy if exists "teacher full access" on classes;
-create policy "teacher full access" on classes
-  for all to authenticated using (true) with check (true);
-
-drop policy if exists "teacher full access" on students;
-create policy "teacher full access" on students
-  for all to authenticated using (true) with check (true);
-
-drop policy if exists "teacher full access" on objectives;
-create policy "teacher full access" on objectives
-  for all to authenticated using (true) with check (true);
-
-drop policy if exists "teacher full access" on student_objective_status;
-create policy "teacher full access" on student_objective_status
-  for all to authenticated using (true) with check (true);
-
-drop policy if exists "teacher full access" on student_ratings;
-create policy "teacher full access" on student_ratings
-  for all to authenticated using (true) with check (true);
-
-drop policy if exists "teacher full access" on milestones;
-create policy "teacher full access" on milestones
-  for all to authenticated using (true) with check (true);
+do $$
+declare t text;
+begin
+  foreach t in array array[
+    'classes', 'students', 'objectives',
+    'student_objective_status', 'student_ratings', 'milestones'
+  ] loop
+    execute format('drop policy if exists "teacher full access" on %I', t);
+    execute format('drop policy if exists "authenticated read access" on %I', t);
+    execute format(
+      'create policy "authenticated read access" on %I
+         for select to authenticated using (true)', t);
+    execute format('drop policy if exists "admin write access" on %I', t);
+    execute format(
+      'create policy "admin write access" on %I
+         for all to authenticated
+         using (public.is_admin()) with check (public.is_admin())', t);
+  end loop;
+end $$;
 
 -- Defense in depth: Supabase grants anon table-level privileges by default
 -- on new tables. We rely entirely on RLS (no anon policy = no rows), but
